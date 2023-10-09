@@ -34,14 +34,17 @@
                                (m/translate [0 -3.5 0] (m/cube 16 3.5 2))))
                  (m/translate [0 0 -1.3] (m/cube 14 14 5))))
    ;; (m/cube 17 18 0.3)
-   (when show-switch (m/import "resources/kailh_switch.stl"))))
+   (when show-switch
+     (m/union
+      (m/translate [0 0 3.9] (m/import "resources/r3single.stl"))
+      (m/rotate [0 0 (deg2rad 180)] (m/import "resources/kailh_switch.stl"))))))
 
-(spit "pebaboard.scad" (scad/write-scad (switch-hole false)))
+;; (spit "pebaboard.scad" (scad/write-scad (switch-hole true)))
 
-(defn draw-line [v1 v2]
+(defn draw-line [[_ x1 y1] [_ x2 y2]]
   (m/hull
-   (m/translate v1 (m/sphere 0.01))
-   (m/translate v2 (m/sphere 0.01))))
+   (m/translate [0 x1 y1] (m/sphere 0.1))
+   (m/translate [0 x2 y2] (m/sphere 0.1))))
 
 (defn point-distance [[x1 y1] [x2 y2]]
   (sqrt (+ (pow (- x2 x1) 2)
@@ -94,49 +97,50 @@
                    :tanx (:tanx point)
                    :tany (:tany point)}))))))
 
-(defn cu [[x1 y1] [x2 y2] [x3 y3]]
-  (let [t (range 0 1.0 0.001)
-        b3x         (bezier-3 x1 x2 x3)
-        xs          (map b3x t)
-        b3y         (bezier-3 y1 y2 y3)
-        ys          (map b3y t)
-        t3x (b-tan x1 x2 x3)
-        tx (map t3x t)
-        t3y (b-tan y1 y2 y3)
-        ty (map t3y t)
-        [cx cy] [-30 30]
-        points (uniform-points (map vector xs ys) (/ (curve-length (map vector xs ys)) 4))
-        px (map first points)
-        py (map last points)]
-    (m/union
-     (for [[x y] (map vector px py)]
-       (m/translate [0 x y] (m/rotate [(-  (p-ang [x y] [cx cy]) (/ Math/PI 2)) 0 0] (switch-hole false))))
-     (for [[x y tanx tany] (map vector xs ys tx ty)]
-       (let [a (- (atan2 tany tanx) (/ Math/PI 2))]
-         (m/union
-          (draw-line [0 x y] [0 (+ (* 3 (cos a)) x) (+ (* 3 (sin a)) y)])
-          (m/color [1 0 0] (m/translate [0 x y] (m/cube 0.1 0.1 0.1)))))))))
+(defn middle [[x1 y1 z1] [x2 y2 z2]]
+  [(/ (+ x1 x2) 2) (/ (+ y1 y2) 2) (/ (+ z1 z2) 2)])
+
+(defn add-vector [[x1 y1 z1] [x2 y2 z2] n]
+  [(+ (+ x1 x2) n) (+ (+ y1 y2) 2) (/ (+ z1 z2) n)])
+
+(defn inner-product [u v]
+  (apply + (map * u v)))
+
+(defn norm [u]
+  (Math/sqrt (inner-product u u)))
+
+(defn mag-vec [[x y z]]
+  (sqrt (+ (* x x) (* y y) (* z z))))
+
+(defn len-vec [[x y z]]
+  (sqrt (+ (pow x 2)
+           (pow y 2)
+           (pow z 2))))
 
 (def ann
-  (let [curve (draw-curve [10 30] [0 -10] [-50 0])
+  (let [curve (draw-curve [0 50] [0 20] [50 0])
         switch (switch-locations curve)]
     (m/union
      (for [[x y tanx tany] (map (juxt :x :y :tanx :tany) switch)]
-       (let [a (- (atan2 tany tanx) (/ Math/PI 2))]
-         (m/translate [0 x y] (m/sphere 1))
-         (draw-line [0 x y] [0 (+ (* 5 (cos a)) x) (+ (* 5 (sin a)) y)])))
-     (for [[x y] (map (juxt :x :y) curve)]
+       (let [a (- (/ Math/PI 2) (atan2 tany tanx) )]
+         (println tanx tany)
          (m/union
-          (m/color [1 0 0] (m/translate [0 x y] (m/cube 0.1 0.1 0.1))))))))
+          ;; (draw-line [0 x y] [0 (+ (* 20 (cos a)) x) (+ (* 20 (sin a)) y)])
+          (m/translate [0 x y] (m/rotate [(- (p-ang [x y] [(+ (* 20 (cos a)) x) (+ (* 20 (sin a)) y)]) (/ Math/PI 2)) 0 0] (switch-hole true))))))
+     (for [[x y] (map (juxt :x :y) curve)]
+       (m/union
+        ;; (m/color [1 0 0] (m/translate [0 x y] (m/cube 0.1 0.1 0.1)))
+        )))))
 
-(def anus
-  (let [curve (cu [10 30] [0 -10] [-50 0])]
-    (m/union
-     (for [it (range 1)]
-       (m/translate [(* 17 it) 0 0] curve)))))
-
-(spit "pebaboard.scad" (scad/write-scad ann))
-
+(spit "pebaboard.scad" (scad/write-scad
+                        (m/union
+                         (for [i (range 5)]
+                           (case i
+                             0 (m/translate [(* i 18) 0 0] ann)
+                             1 (m/translate [(* i 18) -2 0] ann)
+                             2 (m/translate [(* i 18) -7 0] ann)
+                             3 (m/translate [(* i 18) 1 0] ann)
+                             4 (m/translate [(* i 18) 10 0] ann))))))
 
 
 ;; (defn parse-line [line]
@@ -152,8 +156,6 @@
 ;;    (m/translate beg (m/cube 0.01 0.01 0.01))
 ;;    (m/translate end (m/cube 0.01 0.01 0.01))))
 
-;; (defn middle [[x1 y1 z1] [x2 y2 z2]]
-;;   [(/ (+ x1 x2) 2) (/ (+ y1 y2) 2) (/ (+ z1 z2) 2)])
 
 
 ;; (def key-points
@@ -167,11 +169,6 @@
 ;;   (println "Hello, World!"))
 
 
-;; (defn inner-product [u v]
-;;   (apply + (map * u v)))
-
-;; (defn norm [u]
-;;   (Math/sqrt (inner-product u u)))
 
 ;; (defn angulo [u v]
 ;;   (Math/acos (/ (inner-product u v)
